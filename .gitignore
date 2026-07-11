@@ -1,0 +1,9 @@
+# Mengabaikan folder virtual environment
+venv/
+env/
+.venv/
+
+# (Opsional tapi disarankan) Mengabaikan cache Python dan file environment variables
+__pycache__/
+*.pyc
+.env
