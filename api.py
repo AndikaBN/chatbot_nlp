@@ -67,6 +67,67 @@ def normalize_text(text: str) -> str:
     return text.strip()
 
 
+def get_conversation_reply(message: str) -> str | None:
+    normalized = normalize_text(message)
+    if not normalized:
+        return "Pesan masih kosong. Silakan tuliskan keluhan atau pertanyaan Anda."
+
+    invitation = "Ada kendala IT yang bisa saya bantu?"
+    addressee = r"(?: (?:bot|admin|min|kak|pak|bu))?"
+
+    if re.fullmatch(
+        r"ass?alamu ?alaikum(?: (?:wr ?wb|warahmatullahi wabarakatuh))?" + addressee,
+        normalized,
+    ):
+        return f"Waalaikumsalam! Saya asisten IT Support. {invitation}"
+
+    greeting = re.fullmatch(r"(?:selamat )?(pagi|siang|sore|malam)" + addressee, normalized)
+    if greeting:
+        return f"Selamat {greeting.group(1)}! {invitation}"
+
+    replies = [
+        (
+            r"(?:ha+l+o+|he+l+o+|hai+|hi+|hei+|hey+|permisi|salam(?: sejahtera)?|shalom|om swastiastu)"
+            + addressee,
+            f"Halo! Saya asisten IT Support. {invitation}",
+        ),
+        (
+            r"(?:tes|test|testing|ping|tes ?123|test ?123|coba (?:tes|test))" + addressee,
+            "Pesan tes diterima. Chatbot IT Support siap membantu. "
+            "Silakan sampaikan kendala Anda.",
+        ),
+        (
+            r"(?:terima ?kasih|makasih|makasi|thanks|thank you|thx)" + addressee,
+            "Sama-sama! Jika ada kendala IT lainnya, silakan sampaikan.",
+        ),
+        (
+            r"(?:bantuan|help|menu|tolong|bisa bantu apa|apa yang bisa (?:kamu|anda) bantu|cara pakai)"
+            + addressee,
+            "Saya dapat membantu kendala perangkat keras, aplikasi, dan jaringan. "
+            "Ceritakan masalah serta pesan error yang muncul, misalnya "
+            "'printer tidak bisa mencetak' atau 'laptop tidak bisa terhubung ke Wi-Fi'.",
+        ),
+        (
+            r"(?:ok|oke|okay|baik|siap)" + addressee,
+            "Baik. Jika ada kendala IT yang ingin dibantu, silakan sampaikan.",
+        ),
+        (
+            r"(?:bye|dadah|sampai jumpa|selamat tinggal)" + addressee,
+            "Sampai jumpa! Silakan hubungi saya kembali jika membutuhkan bantuan IT.",
+        ),
+        (
+            r"apa kabar" + addressee,
+            f"Saya siap membantu Anda. {invitation}",
+        ),
+    ]
+
+    for pattern, reply in replies:
+        if re.fullmatch(pattern, normalized):
+            return reply
+
+    return None
+
+
 def contains_any_keyword(text: str, keywords: list[str]) -> bool:
     normalized = normalize_text(text)
     return any(keyword in normalized for keyword in keywords)
@@ -202,17 +263,29 @@ def add_augmented_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def load_dataset(path: Path) -> list[dict[str, Any]]:
     rows = []
 
-    with path.open("r", encoding="utf-8") as file:
-        reader = csv.DictReader(file)
+    with path.open("r", encoding="utf-8-sig", newline="") as file:
+        header = file.readline()
+        file.seek(0)
+        try:
+            delimiter = csv.Sniffer().sniff(header, delimiters=",;\t").delimiter
+        except csv.Error:
+            delimiter = ","
+
+        reader = csv.DictReader(file, delimiter=delimiter, skipinitialspace=True)
+        if reader.fieldnames is not None:
+            reader.fieldnames = [column.strip().lower() for column in reader.fieldnames]
         required_columns = {"text", "label", "response"}
 
         if reader.fieldnames is None or not required_columns.issubset(reader.fieldnames):
-            raise ValueError("Dataset harus memiliki kolom: text, label, response")
+            raise ValueError(
+                f"Dataset {path} harus memiliki kolom: text, label, response. "
+                f"Kolom yang terbaca: {reader.fieldnames!r}"
+            )
 
         for row in reader:
-            question = row["text"].strip()
-            label = row["label"].strip()
-            response = row["response"].strip()
+            question = (row["text"] or "").strip()
+            label = (row["label"] or "").strip()
+            response = (row["response"] or "").strip()
 
             if not question or not label or not response:
                 continue
@@ -334,6 +407,10 @@ def health() -> dict[str, Any]:
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest) -> ChatResponse:
     message = request.message.strip()
+    conversation_reply = get_conversation_reply(message)
+    if conversation_reply is not None:
+        return ChatResponse(success=True, reply=conversation_reply)
+
     intent, confidence = predict_intent(message)
     retrieval = find_best_response(message)
     similarity = retrieval["similarity_score"]

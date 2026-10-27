@@ -19,7 +19,7 @@ MODEL_NAME = "indobenchmark/indobert-base-p1"
 # Kalau laptop berat, ganti ke:
 # MODEL_NAME = "indobenchmark/indobert-lite-base-p1"
 
-DATA_PATH = "data/dataset_chatbot_it_support_3_kategori.csv"
+DATA_PATH = "data/dataset_chatbot_it_support_client_netone.csv"
 OUTPUT_DIR = "model-indobert-ticketing"
 
 

@@ -170,17 +170,29 @@ def add_augmented_rows(rows):
 def load_dataset(path):
     rows = []
 
-    with open(path, "r", encoding="utf-8") as file:
-        reader = csv.DictReader(file)
+    with open(path, "r", encoding="utf-8-sig", newline="") as file:
+        header = file.readline()
+        file.seek(0)
+        try:
+            delimiter = csv.Sniffer().sniff(header, delimiters=",;\t").delimiter
+        except csv.Error:
+            delimiter = ","
+
+        reader = csv.DictReader(file, delimiter=delimiter, skipinitialspace=True)
+        if reader.fieldnames is not None:
+            reader.fieldnames = [column.strip().lower() for column in reader.fieldnames]
         required_columns = {"text", "label", "response"}
 
         if reader.fieldnames is None or not required_columns.issubset(reader.fieldnames):
-            raise ValueError("Dataset harus memiliki kolom: text, label, response")
+            raise ValueError(
+                f"Dataset {path} harus memiliki kolom: text, label, response. "
+                f"Kolom yang terbaca: {reader.fieldnames!r}"
+            )
 
         for row in reader:
-            question = row["text"].strip()
-            label = row["label"].strip()
-            response = row["response"].strip()
+            question = (row["text"] or "").strip()
+            label = (row["label"] or "").strip()
+            response = (row["response"] or "").strip()
 
             if not question or not label or not response:
                 continue
